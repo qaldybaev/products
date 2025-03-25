@@ -23,43 +23,83 @@ const createProduct = async (req, res) => {
 
 const getAllProducts = async (req, res) => {
     try {
-        const { limit = 10, page = 1, sortField = "id", sortOrder = "ASC" } = req.query
-        if (isNaN(limit) || isNaN(page)) {
-            return res.send({
-                message: `Limit ${limit} yoki page ${page} xato kiritldi`
-            })
-        }
-        const sortArr = ["id", "name", "price", "count", "createdAt"]
-        const sortOrderArr = ["ASC", "DESC"]
-        if (!(sortArr.some(sort => sort === sortField) && sortOrderArr.some(or => or === sortOrder))) {
+        let {
+            limit = 10,
+            page = 1,
+            sortField = "id",
+            sortOrder = "ASC",
+            fields,
+            minPrice,
+            maxPrice
+        } = req.query;
+
+        if (Array.isArray(limit)) limit = limit[0];
+        if (Array.isArray(page)) page = page[0];
+
+        limit = Number(limit);
+        page = Number(page);
+
+        if (isNaN(limit) || isNaN(page) || limit <= 0 || page <= 0) {
             return res.status(400).send({
-                message: `sortField: ${sortField} yoki sortOrder: ${sortOrder} xato kiritildi!`
+                message: `Limit yoki page noto'g'ri kiritildi!`
             });
         }
-        const skip = (page - 1) * limit
-        const order = sortOrder === "ASC" ? 1 : -1
-        const totalCount = await Product.countDocuments()
-        const products = await Product.find()
+
+        const sortFieldArr = ["id", "name", "price", "createdAt"];
+        const sortOrderArr = ["ASC", "DESC"];
+
+        if (!sortFieldArr.includes(sortField) || !sortOrderArr.includes(sortOrder)) {
+            return res.status(400).send({
+                message: `sortField: ${sortField} yoki sortOrder: ${sortOrder} noto'g'ri kiritildi!`
+            });
+        }
+
+        const skip = (page - 1) * limit;
+        const order = sortOrder === "ASC" ? 1 : -1;
+
+        let filterQuery = {};
+
+        if (minPrice || maxPrice) {
+            filterQuery.price = {};
+            if (minPrice) {
+                filterQuery.price.$gte = Number(minPrice);
+            }
+            if (maxPrice) {
+                filterQuery.price.$lte = Number(maxPrice);
+            }
+        }
+
+        let selectFields = fields ? fields.split(",").map(field => field.trim()) : [];
+
+        let query = Product.find(filterQuery)
             .sort({ [sortField]: order })
             .limit(limit)
-            .skip(skip)
+            .skip(skip);
+
+        if (selectFields.length > 0) {
+            query = query.select(selectFields.join(" "));
+        }
+
+        const totalCount = await Product.countDocuments();
+        const products = await query;
 
         res.status(200).send({
-            status: "sucess✅",
+            status: "success✅",
             message: "Barcha mahsulotlar",
             totalCount,
             data: {
-                limit: Number(limit),
-                page: Number(page),
-                products: products
+                limit,
+                page,
+                products
             }
-        })
+        });
     } catch (error) {
         res.status(error.statusCode || 500).send({
-            message: "Product qoshishda xatolik❌"
-        })
+            message: "Mahsulotlarni olishda xatolik❌"
+        });
     }
-}
+};
+
 
 const getProductById = async (req, res) => {
     try {
